@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>蔵本モデル同期シミュレーター (Visual Math Edition)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #111116;
+            color: #e0e0e0;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            font-size: 22px;
+            margin-bottom: 5px;
+            color: #ffffff;
+            letter-spacing: 1px;
+        }
+        p.subtitle {
+            font-size: 13px;
+            color: #888;
+            margin-top: 0;
+            margin-bottom: 20px;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+            max-width: 1120px;
+            width: 100%;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .canvas-container {
+            position: relative;
+        }
+        canvas {
+            background: #15151c;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            display: block;
+            border: 1px solid #252530;
+            cursor: pointer;
+        }
+        .controls {
+            background: #1a1a24;
+            padding: 22px;
+            border-radius: 12px;
+            width: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+            border: 1px solid #2d2d3d;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .label-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            font-weight: bold;
+            color: #aaa;
+        }
+        .val {
+            color: #00adb5;
+        }
+        input[type=range] {
+            width: 100%;
+            background: #2a2a3a;
+            accent-color: #00adb5;
+            cursor: pointer;
+            height: 6px;
+            border-radius: 3px;
+        }
+        select, button {
+            background: #282838;
+            color: #fff;
+            border: 1px solid #3d3d52;
+            padding: 10px 12px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        select:hover {
+            background: #333348;
+        }
+        button:hover {
+            background: #383850;
+        }
+        button.primary {
+            background: #00adb5;
+            border: none;
+            color: #0d0d13;
+        }
+        button.primary:hover {
+            background: #00cbd5;
+        }
+        button.danger {
+            background: #ff3366;
+            border: none;
+            color: #fff;
+        }
+        button.danger:hover {
+            background: #ff5588;
+        }
+        .button-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        /* ライブ数式インスペクター */
+        .inspector {
+            background: #111116;
+            padding: 14px;
+            border-radius: 8px;
+            border: 1px solid #2d2d3d;
+            font-family: monospace;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+        .inspector-title {
+            font-size: 11px;
+            font-weight: bold;
+            color: #888;
+            margin-bottom: 8px;
+            border-bottom: 1px dashed #2d2d3d;
+            padding-bottom: 4px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .formula-box {
+            background: #0d0d12;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 6px;
+            font-size: 12px;
+            border-left: 3px solid #00adb5;
+        }
+        .plus { color: #00adb5; }
+        .minus { color: #ff3366; }
+        .neutral { color: #888; }
+
+        .info-panel {
+            max-width: 1120px;
+            width: 100%;
+            margin-top: 25px;
+            background: #1a1a24;
+            padding: 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #ccc;
+            border: 1px solid #2d2d3d;
+        }
+        .info-panel h2 {
+            font-size: 16px;
+            color: #fff;
+            margin-top: 0;
+            border-bottom: 1px solid #2d2d3d;
+            padding-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>蔵本モデル 同期シミュレーター <span style="font-size: 12px; color: #00adb5; vertical-align: middle; border: 1px solid #00adb5; padding: 2px 6px; border-radius: 10px; margin-left: 5px;">VISUAL MATH</span></h1>
+    <p class="subtitle">画面上の点をクリックして、個体が受ける「引き込みの力」をリアルタイムで追跡する</p>
+
+    <div class="container">
+        <!-- シミュレーション表示エリア -->
+        <div class="canvas-container">
+            <canvas id="simCanvas" width="800" height="400"></canvas>
+        </div>
+
+        <!-- ユーザー操作パネル -->
+        <div class="controls">
+            
+            <!-- 数式インスペクター (追跡用) -->
+            <div class="inspector">
+                <div class="inspector-title">
+                    <span>個体追跡インスペクター</span>
+                    <span style="color: #fff;">ID: #<span id="insId">0</span></span>
+                </div>
+                <div>固有速度 (ω): <span id="insOmega" style="color: #fff;">1.000</span> rad/s</div>
+                <div>同調作用 (F): <span id="insPull" style="font-weight: bold;">0.000</span> rad/s</div>
+                <div class="formula-box">
+                    <span style="color: #888;">実際の速度 = ω + F</span><br>
+                    <span style="font-weight: bold; font-size: 13px;">
+                        <span id="fActual">1.000</span> = 
+                        <span id="fOmega" style="color: #ffaa00;">1.000</span> 
+                        <span id="fSign">+</span> 
+                        <span id="fPull">0.000</span>
+                    </span>
+                </div>
+                <div style="font-size: 9px; color: #666; margin-top: 6px; line-height: 1.2;">
+                    ※キャンバス上の点をクリックすると、追跡対象を切り替えられます。
+                </div>
+            </div>
+
+            <div class="control-group">
+                <div class="label-row">
+                    <span>結合強度 (K)</span>
+                    <span class="val" id="kVal">2.0</span>
+                </div>
+                <input type="range" id="kRange" min="0" max="8" step="0.1" value="2.0">
+            </div>
+
+            <div class="control-group">
+                <div class="label-row">
+                    <span>テンポのばらつき (σ)</span>
+                    <span class="val" id="spreadVal">0.5</span>
+                </div>
+                <input type="range" id="spreadRange" min="0" max="2" step="0.05" value="0.5">
+            </div>
+
+            <div class="control-group">
+                <div class="label-row">
+                    <span>時間倍率 (Speed)</span>
+                    <span class="val" id="speedVal">1.0x</span>
+                </div>
+                <input type="range" id="speedRange" min="0.1" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <div class="label-row">
+                    <span>個体数 (N)</span>
+                    <span class="val" id="nVal">150</span>
+                </div>
+                <input type="range" id="nRange" min="10" max="400" step="10" value="150">
+            </div>
+
+            <div class="control-group">
+                <select id="couplingSelect">
+                    <option value="global">全体結合 (Global Mean-Field)</option>
+                    <option value="local">局所結合 (Spatial Local Network)</option>
+                </select>
+            </div>
+
+            <button id="disturbBtn" class="danger">⚡ 位相を乱す（混沌を注入）</button>
+
+            <div class="button-grid">
+                <button id="pauseBtn" class="primary">一時停止</button>
+                <button id="resetBtn">リセット</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="info-panel">
+        <h2>インスペクターの数値から読み解く「同期のメカニズム」</h2>
+        <ul>
+            <li><strong>同期していないとき (UNSYNCED)</strong>: 個体ごとに固有の速度 $\omega$（テンポのばらつき）がバラバラなうえ、周囲から受ける力 $F$ が目まぐるしくプラスマイナスに変化します。結果として実際の速度（数式の左辺）が激しく変動します。</li>
+            <li><strong>同期が始まると (SYNCED)</strong>: 本来は遅い個体（$\omega < 1.0$）には<strong>プラスの同調力 $F > 0$（青色）</strong>が働き、本来は速い個体（$\omega > 1.0$）には<strong>マイナスの同調力 $F < 0$（赤色）</strong>が働き、全員が同じ速度に「引き込まれ」て均衡します。同期した個体をクリックして数式を見ると、実際の速度が全員ほぼ同じ値（$1.0$ 前後）にピタッと張り付いているのが分かります。</li>
+        </ul>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI要素
+        const kRange = document.getElementById('kRange');
+        const kVal = document.getElementById('kVal');
+        const spreadRange = document.getElementById('spreadRange');
+        const spreadVal = document.getElementById('spreadVal');
+        const speedRange = document.getElementById('speedRange');
+        const speedVal = document.getElementById('speedVal');
+        const nRange = document.getElementById('nRange');
+        const nVal = document.getElementById('nVal');
+        const couplingSelect = document.getElementById('couplingSelect');
+        const disturbBtn = document.getElementById('disturbBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+
+        // インスペクター表示用要素
+        const insId = document.getElementById('insId');
+        const insOmega = document.getElementById('insOmega');
+        const insPull = document.getElementById('insPull');
+        const fActual = document.getElementById('fActual');
+        const fOmega = document.getElementById('fOmega');
+        const fSign = document.getElementById('fSign');
+        const fPull = document.getElementById('fPull');
+
+        // パラメータ
+        let K = parseFloat(kRange.value);
+        let omegaSpread = parseFloat(spreadRange.value);
+        let timeMultiplier = parseFloat(speedRange.value);
+        let N = parseInt(nRange.value);
+        let couplingType = couplingSelect.value;
+        let isPaused = false;
+
+        // 追跡する個体のインデックス (デフォルトは0)
+        let selectedIndex = 0;
+
+        const baseOmega = 1.0; 
+        const baseDt = 0.04; 
+        const neighborRadius = 75; 
+
+        let agents = [];
+
+        function randomNormal(mean, stdDev) {
+            let u = 0, v = 0;
+            while(u === 0) u = Math.random();
+            while(v === 0) v = Math.random();
+            return mean + stdDev * Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+        }
+
+        function initAgents() {
+            agents = [];
+            for (let i = 0; i < N; i++) {
+                agents.push({
+                    phase: Math.random() * 2 * Math.PI, 
+                    omega: randomNormal(baseOmega, omegaSpread), 
+                    fx: 420 + Math.random() * 360,
+                    fy: 20 + Math.random() * 360,
+                    vx: (Math.random() - 0.5) * 0.4,
+                    vy: (Math.random() - 0.5) * 0.4
+                });
+            }
+            // 選択インデックスが範囲外にならないようリセット
+            if (selectedIndex >= N) selectedIndex = 0;
+        }
+
+        // クリックイベント：最も近いエージェントを追跡対象に設定
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            let minDist = 25; // 25ピクセル以内のもののみ判定
+            let foundIndex = -1;
+
+            // 1. 右側（ホタルビュー）で判定
+            for (let i = 0; i < N; i++) {
+                let a = agents[i];
+                let dx = mouseX - a.fx;
+                let dy = mouseY - a.fy;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < minDist) {
+                    minDist = dist;
+                    foundIndex = i;
+                }
+            }
+
+            // 2. 左側（位相円ビュー）で判定
+            const cx = 200, cy = 200, radius = 130;
+            for (let i = 0; i < N; i++) {
+                let a = agents[i];
+                let px = cx + radius * Math.cos(a.phase);
+                let py = cy + radius * Math.sin(a.phase);
+                let dx = mouseX - px;
+                let dy = mouseY - py;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist < minDist) {
+                    minDist = dist;
+                    foundIndex = i;
+                }
+            }
+
+            if (foundIndex !== -1) {
+                selectedIndex = foundIndex;
+            }
+        });
+
+        // UIイベント
+        kRange.addEventListener('input', (e) => {
+            K = parseFloat(e.target.value);
+            kVal.innerText = K.toFixed(1);
+        });
+
+        spreadRange.addEventListener('input', (e) => {
+            omegaSpread = parseFloat(e.target.value);
+            spreadVal.innerText = omegaSpread.toFixed(2);
+            agents.forEach(a => {
+                a.omega = randomNormal(baseOmega, omegaSpread);
+            });
+        });
+
+        speedRange.addEventListener('input', (e) => {
+            timeMultiplier = parseFloat(e.target.value);
+            speedVal.innerText = timeMultiplier.toFixed(1) + 'x';
+        });
+
+        nRange.addEventListener('input', (e) => {
+            N = parseInt(e.target.value);
+            nVal.innerText = N;
+            initAgents();
+        });
+
+        couplingSelect.addEventListener('change', (e) => {
+            couplingType = e.target.value;
+        });
+
+        disturbBtn.addEventListener('click', () => {
+            agents.forEach(a => {
+                a.phase = Math.random() * 2 * Math.PI;
+            });
+            disturbBtn.style.transform = 'scale(0.95)';
+            setTimeout(() => disturbBtn.style.transform = 'none', 100);
+        });
+
+        pauseBtn.addEventListener('click', () => {
+            isPaused = !isPaused;
+            pauseBtn.innerText = isPaused ? "再開" : "一時停止";
+            if (isPaused) pauseBtn.classList.remove('primary');
+            else pauseBtn.classList.add('primary');
+        });
+
+        resetBtn.addEventListener('click', () => {
+            initAgents();
+        });
+
+        // 更新処理
+        function update() {
+            if (isPaused) return;
+
+            const dt = baseDt * timeMultiplier;
+
+            // 秩序パラメータの計算
+            let sumCos = 0, sumSin = 0;
+            for (let a of agents) {
+                sumCos += Math.cos(a.phase);
+                sumSin += Math.sin(a.phase);
+            }
+            let rCos = sumCos / N;
+            let rSin = sumSin / N;
+            let R = Math.sqrt(rCos * rCos + rSin * rSin); 
+            let psi = Math.atan2(rSin, rCos);             
+
+            // エージェントの更新
+            if (couplingType === 'global') {
+                for (let a of agents) {
+                    let dTheta = a.omega + K * R * Math.sin(psi - a.phase);
+                    a.phase += dTheta * dt;
+                }
+            } else {
+                let nextPhases = [];
+                for (let i = 0; i < N; i++) {
+                    let a = agents[i];
+                    let sum = 0, count = 0;
+                    for (let j = 0; j < N; j++) {
+                        if (i === j) continue;
+                        let b = agents[j];
+                        let dx = a.fx - b.fx;
+                        let dy = a.fy - b.fy;
+                        if (dx * dx + dy * dy < neighborRadius * neighborRadius) {
+                            sum += Math.sin(b.phase - a.phase);
+                            count++;
+                        }
+                    }
+                    let couplingEffect = count > 0 ? (K / count) * sum : 0;
+                    nextPhases[i] = a.phase + (a.omega + couplingEffect) * dt;
+                }
+                for (let i = 0; i < N; i++) {
+                    agents[i].phase = nextPhases[i];
+                }
+            }
+
+            for (let a of agents) {
+                a.phase = (a.phase + Math.PI * 2) % (Math.PI * 2);
+                a.fx += a.vx * timeMultiplier;
+                a.fy += a.vy * timeMultiplier;
+                if (a.fx < 415 || a.fx > 785) a.vx *= -1;
+                if (a.fy < 15 || a.fy > 385) a.vy *= -1;
+            }
+
+            // ------------------------------------
+            // ライブインスペクター数値の書き換え
+            // ------------------------------------
+            if (agents.length > selectedIndex) {
+                let sel = agents[selectedIndex];
+                
+                // 選択された個体が受けている引っ張り力を計算
+                let pullForce = 0;
+                if (couplingType === 'global') {
+                    pullForce = K * R * Math.sin(psi - sel.phase);
+                } else {
+                    let sum = 0, count = 0;
+                    for (let j = 0; j < N; j++) {
+                        if (selectedIndex === j) continue;
+                        let b = agents[j];
+                        let dx = sel.fx - b.fx;
+                        let dy = sel.fy - b.fy;
+                        if (dx * dx + dy * dy < neighborRadius * neighborRadius) {
+                            sum += Math.sin(b.phase - sel.phase);
+                            count++;
+                        }
+                    }
+                    pullForce = count > 0 ? (K / count) * sum : 0;
+                }
+                let actualSpeed = sel.omega + pullForce;
+
+                // UI更新
+                insId.innerText = selectedIndex;
+                insOmega.innerText = sel.omega.toFixed(3);
+                
+                // 引っ張り力のUIカラー
+                if (pullForce > 0.01) {
+                    insPull.className = 'plus';
+                    insPull.innerText = '+' + pullForce.toFixed(3);
+                    fSign.className = 'plus';
+                    fSign.innerText = '+';
+                    fPull.className = 'plus';
+                    fPull.innerText = pullForce.toFixed(3);
+                } else if (pullForce < -0.01) {
+                    insPull.className = 'minus';
+                    insPull.innerText = pullForce.toFixed(3);
+                    fSign.className = 'minus';
+                    fSign.innerText = '-';
+                    fPull.className = 'minus';
+                    // マイナス表示なので絶対値に
+                    fPull.innerText = Math.abs(pullForce).toFixed(3);
+                } else {
+                    insPull.className = 'neutral';
+                    insPull.innerText = ' 0.000';
+                    fSign.className = 'neutral';
+                    fSign.innerText = '+';
+                    fPull.className = 'neutral';
+                    fPull.innerText = '0.000';
+                }
+
+                fActual.innerText = actualSpeed.toFixed(3);
+                fOmega.innerText = sel.omega.toFixed(3);
+            }
+        }
+
+        // 描画処理
+        function draw() {
+            let sumCos = 0, sumSin = 0;
+            for (let a of agents) {
+                sumCos += Math.cos(a.phase);
+                sumSin += Math.sin(a.phase);
+            }
+            let R = Math.sqrt((sumCos/N)*(sumCos/N) + (sumSin/N)*(sumSin/N));
+            let psi = Math.atan2(sumSin/N, sumCos/N);
+
+            let globalPulse = Math.max(0, Math.sin(psi)) * R;
+            let bgR = Math.floor(17 + 8 * globalPulse);
+            let bgG = Math.floor(17 + 18 * globalPulse);
+            let bgB = Math.floor(25 + 26 * globalPulse);
+            
+            ctx.fillStyle = `rgb(${bgR}, ${bgG}, ${bgB})`;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(400, 0);
+            ctx.lineTo(400, 400);
+            ctx.stroke();
+
+            // ------------------------------------
+            // 左：位相円ビュー
+            // ------------------------------------
+            const cx = 200, cy = 200, radius = 130;
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            let ax = cx + R * radius * Math.cos(psi);
+            let ay = cy + R * radius * Math.sin(psi);
+            ctx.strokeStyle = `rgba(255, 51, 102, ${0.3 + 0.7 * R})`;
+            ctx.lineWidth = 2 + R * 4;
+            ctx.beginPath();
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(ax, ay);
+            ctx.stroke();
+
+            ctx.fillStyle = '#ff3366';
+            ctx.beginPath();
+            ctx.arc(ax, ay, 5 + R * 3, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 個体描画
+            for (let i = 0; i < N; i++) {
+                let a = agents[i];
+                let px = cx + radius * Math.cos(a.phase);
+                let py = cy + radius * Math.sin(a.phase);
+                ctx.beginPath();
+                ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+                ctx.fillStyle = `hsl(${a.phase * 180 / Math.PI}, 95%, 60%)`;
+                ctx.fill();
+
+                // 追跡中個体の強調表示（左）
+                if (i === selectedIndex) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(px, py, 9, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+            }
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText("位相円ビュー（秩序パラメータ R: " + R.toFixed(3) + "）", 15, 25);
+
+            // ------------------------------------
+            // 右：ホタルビュー
+            // ------------------------------------
+            if (couplingType === 'local') {
+                ctx.strokeStyle = 'rgba(0, 173, 181, 0.06)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i < N; i++) {
+                    let a = agents[i];
+                    for (let j = i + 1; j < N; j++) {
+                        let b = agents[j];
+                        let dx = a.fx - b.fx;
+                        let dy = a.fy - b.fy;
+                        if (dx * dx + dy * dy < neighborRadius * neighborRadius) {
+                            ctx.beginPath();
+                            ctx.moveTo(a.fx, a.fy);
+                            ctx.lineTo(b.fx, b.fy);
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            for (let i = 0; i < N; i++) {
+                let a = agents[i];
+                let intensity = Math.pow((Math.sin(a.phase) + 1) / 2, 4);
+
+                ctx.beginPath();
+                ctx.arc(a.fx, a.fy, 5 + intensity * 9, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(0, 240, 255, ${0.06 * intensity})`;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(a.fx, a.fy, 3, 0, Math.PI * 2);
+                ctx.fillStyle = `hsla(${a.phase * 180 / Math.PI}, 90%, ${50 + intensity * 40}%, ${0.2 + intensity * 0.8})`;
+                ctx.fill();
+
+                // 追跡中個体の強調表示（右）
+                if (i === selectedIndex) {
+                    ctx.strokeStyle = '#fff';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(a.fx, a.fy, 10, 0, Math.PI * 2);
+                    ctx.stroke();
+                    
+                    // インデックス番号を表示
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '9px monospace';
+                    ctx.fillText("#" + i, a.fx + 10, a.fy - 10);
+                }
+            }
+
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText(couplingType === 'global' ? "ホタルビュー（全結合）" : "ホタルビュー（局所ネットワーク）", 415, 25);
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        initAgents();
+        loop();
+    </script>
+</body>
+</html>
